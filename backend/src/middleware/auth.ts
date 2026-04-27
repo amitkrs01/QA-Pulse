@@ -19,6 +19,7 @@ declare global {
         email: string;
         name: string;
         role: Role;
+        mustResetPassword: boolean;
       };
       clientIp?: string;
     }
@@ -47,7 +48,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     const decoded = jwt.verify(token, JWT_SECRET) as AuthPayload;
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { id: true, email: true, name: true, role: true, isActive: true },
+      select: { id: true, email: true, name: true, role: true, isActive: true, mustResetPassword: true },
     });
 
     if (!user || !user.isActive) {
@@ -55,7 +56,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    req.user = { id: user.id, email: user.email, name: user.name, role: user.role };
+    req.user = { id: user.id, email: user.email, name: user.name, role: user.role, mustResetPassword: user.mustResetPassword };
     req.clientIp = extractIp(req);
     next();
   } catch {

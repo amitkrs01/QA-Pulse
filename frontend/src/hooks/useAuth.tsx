@@ -20,16 +20,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const token = localStorage.getItem("qa_pulse_token");
-    const stored = localStorage.getItem("qa_pulse_user");
-    if (token && stored) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    api.get("/auth/me")
+      .then(({ data }) => {
+        setUser(data.user);
+        localStorage.setItem("qa_pulse_user", JSON.stringify(data.user));
+      })
+      .catch(() => {
         localStorage.removeItem("qa_pulse_token");
         localStorage.removeItem("qa_pulse_user");
-      }
-    }
-    setLoading(false);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   const login = async (email: string, password: string) => {
