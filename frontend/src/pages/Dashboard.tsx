@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import api from "../lib/api";
 import type { DashboardSummary, Phase, DetailedStatus } from "../lib/types";
-import { PHASE_LABELS, PHASE_COLORS, STATUS_LABELS } from "../lib/constants";
+import { PHASE_LABELS, STATUS_LABELS } from "../lib/constants";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend,
@@ -199,7 +199,7 @@ export default function Dashboard() {
                   outerRadius={80}
                   paddingAngle={3}
                   dataKey="value"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`}
                 >
                   {pieData.map((entry, idx) => (
                     <Cell key={idx} fill={entry.fill} />

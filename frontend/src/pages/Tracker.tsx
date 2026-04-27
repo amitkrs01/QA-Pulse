@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import api from "../lib/api";
 import type { Module, User, Phase, DetailedStatus } from "../lib/types";
-import { PHASE_OPTIONS, STATUS_LABELS } from "../lib/constants";
+import { PHASE_OPTIONS } from "../lib/constants";
 import PhaseBadge from "../components/PhaseBadge";
 import StatusDropdown from "../components/StatusDropdown";
 import { useAuth } from "../hooks/useAuth";
