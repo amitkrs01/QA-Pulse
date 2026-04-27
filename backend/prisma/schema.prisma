@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum DetailedStatus {
+  NOT_STARTED
+  TC_WRITING_IN_PROGRESS
+  TC_REVIEW_PENDING
+  READY_FOR_EXECUTION
+  EXECUTION_IN_PROGRESS
+  BLOCKED
+  FAILED
+  PASSED
+  READY_FOR_RETEST
+  RETEST_IN_PROGRESS
+  RETEST_FAILED
+  RETEST_PASSED
+  DONE
+  NA
+}
+
+enum Phase {
+  PREPARATION
+  EXECUTION
+  OUTCOME
+  RETEST
+  CLOSURE
+  NA
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String   @map("password_hash")
+  role              Role     @default(MEMBER)
+  isActive          Boolean  @default(true) @map("is_active")
+  mustResetPassword Boolean  @default(false) @map("must_reset_password")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  ownedModules       Module[]          @relation("ModuleOwner")
+  activityLogs       ActivityLog[]
+  auditLogs          AuditLog[]
+  projectMemberships ProjectMember[]
+  passwordResetTokens PasswordResetToken[]
+
+  @@map("users")
+}
+
+model Project {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  code      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  members   ProjectMember[]
+  modules   Module[]
+  auditLogs AuditLog[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String   @id @default(uuid())
+  projectId String   @map("project_id")
+  userId    String   @map("user_id")
+  role      Role     @default(MEMBER)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+model Module {
+  id                String         @id @default(uuid())
+  name              String
+  projectId         String         @map("project_id")
+  beDetailedStatus  DetailedStatus @default(NOT_STARTED) @map("be_detailed_status")
+  bePhase           Phase          @default(PREPARATION) @map("be_phase")
+  feDetailedStatus  DetailedStatus @default(NOT_STARTED) @map("fe_detailed_status")
+  fePhase           Phase          @default(PREPARATION) @map("fe_phase")
+  overallPhase      Phase          @default(PREPARATION) @map("overall_phase")
+  ownerId           String?        @map("owner_id")
+  remarks           String?
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner        User?         @relation("ModuleOwner", fields: [ownerId], references: [id])
+  activityLogs ActivityLog[]
+
+  @@unique([projectId, name])
+  @@map("modules")
+}
+
+model ActivityLog {
+  id           String   @id @default(uuid())
+  moduleId     String   @map("module_id")
+  userId       String   @map("user_id")
+  fieldChanged String   @map("field_changed")
+  oldValue     String?  @map("old_value")
+  newValue     String?  @map("new_value")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@map("activity_log")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  projectId String?  @map("project_id")
+  userId    String   @map("user_id")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  details   Json?
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user    User     @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+}
