@@ -4,8 +4,8 @@
   "description": "QA Pulse backend API",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc && cd ../frontend && npm run build",
-    "build:backend": "tsc",
+    "build": "npx tsc && cd ../frontend && npm run build",
+    "build:backend": "npx tsc",
     "start": "NODE_ENV=production node dist/server.js",
     "db:migrate": "npx prisma migrate dev",
     "db:seed": "tsx src/seed.ts",
@@ -14,16 +14,6 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
-    "bcryptjs": "^2.4.3",
-    "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
-    "express": "^4.21.2",
-    "express-rate-limit": "^8.4.1",
-    "jsonwebtoken": "^9.0.2",
-    "nodemailer": "^8.0.7",
-    "uuid": "^11.1.0"
-  },
-  "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.18",
     "@types/express": "^5.0.2",
@@ -32,9 +22,19 @@
     "@types/node": "^22.15.3",
     "@types/nodemailer": "^8.0.0",
     "@types/uuid": "^10.0.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^8.0.7",
     "prisma": "^5.22.0",
-    "ts-node": "^10.9.2",
     "tsx": "^4.19.4",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2"
   }
 }
