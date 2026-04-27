@@ -53,6 +53,64 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+app.get("/api/setup-seed", async (req, res) => {
+  const secret = req.query.key;
+  if (secret !== process.env.SEED_SECRET) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  try {
+    const { execSync } = await import("child_process");
+    execSync("npx prisma db push --skip-generate", { cwd: process.cwd(), stdio: "pipe" });
+
+    const bcrypt = await import("bcryptjs");
+    const { default: prisma } = await import("./lib/prisma");
+
+    const adminEmail = "admin@qapulse.com";
+    let admin = await prisma.user.findUnique({ where: { email: adminEmail } });
+    if (!admin) {
+      const passwordHash = await bcrypt.hash("admin123", 10);
+      admin = await prisma.user.create({
+        data: { name: "Admin", email: adminEmail, passwordHash, role: "ADMIN", mustResetPassword: true },
+      });
+    }
+
+    let project = await prisma.project.findUnique({ where: { code: "DEMO" } });
+    if (!project) {
+      project = await prisma.project.create({ data: { name: "Demo Project", code: "DEMO" } });
+    }
+
+    const adminMember = await prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId: project.id, userId: admin.id } },
+    });
+    if (!adminMember) {
+      await prisma.projectMember.create({
+        data: { projectId: project.id, userId: admin.id, role: "ADMIN" },
+      });
+    }
+
+    const moduleCount = await prisma.module.count({ where: { projectId: project.id } });
+    if (moduleCount === 0) {
+      const modules = ["User Authentication", "Payment Gateway", "User Profile", "Notifications", "Reports Module"];
+      for (const name of modules) {
+        await prisma.module.create({
+          data: {
+            name, projectId: project.id,
+            beDetailedStatus: "NOT_STARTED", bePhase: "PREPARATION",
+            feDetailedStatus: "NOT_STARTED", fePhase: "PREPARATION",
+            overallPhase: "PREPARATION",
+          },
+        });
+      }
+    }
+
+    res.json({ success: true, message: "Database seeded. Admin: admin@qapulse.com / admin123" });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: "Seed failed", details: message });
+  }
+});
+
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/forgot-password", authLimiter);
 app.use("/api/auth/reset-password", authLimiter);
