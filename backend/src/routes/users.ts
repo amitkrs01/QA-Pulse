@@ -134,22 +134,60 @@ router.post("/bulk", async (req: Request, res: Response): Promise<void> => {
 
 router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
   const id = req.params.id as string;
-  const { role, password, name } = req.body;
+  const { role, password, name, projectIds, isActive } = req.body;
 
   const updateData: Record<string, unknown> = {};
   if (role) updateData.role = role === "ADMIN" ? Role.ADMIN : Role.MEMBER;
-  if (password) updateData.passwordHash = await bcrypt.hash(password, 10);
-  if (name) updateData.name = name;
+  if (password) {
+    updateData.passwordHash = await bcrypt.hash(password, 10);
+    updateData.mustResetPassword = true;
+  }
+  if (name) updateData.name = sanitize(name);
+  if (typeof isActive === "boolean") updateData.isActive = isActive;
 
-  if (Object.keys(updateData).length === 0) {
+  const hasFieldUpdates = Object.keys(updateData).length > 0;
+  const hasProjectUpdates = Array.isArray(projectIds);
+
+  if (!hasFieldUpdates && !hasProjectUpdates) {
     res.status(400).json({ error: "Nothing to update" });
     return;
   }
 
-  const user = await prisma.user.update({
+  let user;
+  if (hasFieldUpdates) {
+    user = await prisma.user.update({
+      where: { id },
+      data: updateData,
+      select: { id: true, email: true, name: true, role: true, isActive: true },
+    });
+  }
+
+  if (hasProjectUpdates) {
+    const currentMemberships = await prisma.projectMember.findMany({ where: { userId: id } });
+    const currentProjectIds = new Set(currentMemberships.map((m) => m.projectId));
+    const targetProjectIds = new Set(projectIds as string[]);
+
+    const toAdd = (projectIds as string[]).filter((pid) => !currentProjectIds.has(pid));
+    const toRemove = currentMemberships.filter((m) => !targetProjectIds.has(m.projectId));
+
+    for (const pid of toAdd) {
+      await prisma.projectMember.create({
+        data: { projectId: pid, userId: id, role: role === "ADMIN" ? Role.ADMIN : Role.MEMBER },
+      }).catch(() => {});
+    }
+    for (const m of toRemove) {
+      await prisma.projectMember.delete({ where: { id: m.id } }).catch(() => {});
+    }
+  }
+
+  const updatedUser = await prisma.user.findUnique({
     where: { id },
-    data: updateData,
-    select: { id: true, email: true, name: true, role: true, isActive: true },
+    select: {
+      id: true, email: true, name: true, role: true, isActive: true,
+      projectMemberships: {
+        include: { project: { select: { id: true, name: true, code: true } } },
+      },
+    },
   });
 
   await logAudit({
@@ -157,11 +195,14 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
     action: "user.update",
     entity: "user",
     entityId: id,
-    details: { updated: Object.keys(updateData).filter((k) => k !== "passwordHash") },
+    details: {
+      updated: Object.keys(updateData).filter((k) => k !== "passwordHash"),
+      ...(hasProjectUpdates ? { projectIds } : {}),
+    },
     ipAddress: req.clientIp,
   });
 
-  res.json(user);
+  res.json(updatedUser || user);
 });
 
 router.delete("/:id", async (req: Request, res: Response): Promise<void> => {

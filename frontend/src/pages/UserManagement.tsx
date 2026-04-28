@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import api from "../lib/api";
 import type { User, Role, Project } from "../lib/types";
-import { Plus, UserPlus, Mail, Search } from "lucide-react";
+import { Plus, UserPlus, Mail, Search, Pencil } from "lucide-react";
 import Modal from "../components/Modal";
 
 export default function UserManagement() {
@@ -23,6 +23,14 @@ export default function UserManagement() {
   const [bulkProjectIds, setBulkProjectIds] = useState<string[]>([]);
   const [bulkResults, setBulkResults] = useState<Array<{ email: string; status: string; emailSent?: boolean; error?: string }>>([]);
   const [userSearch, setUserSearch] = useState("");
+
+  const [editUser, setEditUser] = useState<User | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editRole, setEditRole] = useState<Role>("MEMBER");
+  const [editProjects, setEditProjects] = useState<string[]>([]);
+  const [editPassword, setEditPassword] = useState("");
+  const [editError, setEditError] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   const fetchData = async () => {
     const [usersRes, projectsRes] = await Promise.all([
@@ -76,18 +84,55 @@ export default function UserManagement() {
     }
   };
 
-  const handleToggleActive = async (user: User) => {
-    if (user.isActive) {
-      await api.delete(`/users/${user.id}`);
-    } else {
-      await api.patch(`/users/${user.id}`, { role: user.role });
-    }
-    await fetchData();
+  const openEditModal = (u: User) => {
+    setEditUser(u);
+    setEditName(u.name);
+    setEditRole(u.role);
+    setEditProjects(u.projectMemberships?.map((pm) => pm.project.id) || []);
+    setEditPassword("");
+    setEditError("");
   };
 
-  const handleRoleChange = async (userId: string, newRole: Role) => {
-    await api.patch(`/users/${userId}`, { role: newRole });
-    await fetchData();
+  const handleEditSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editUser) return;
+    setEditError("");
+    setEditSaving(true);
+    try {
+      const payload: Record<string, unknown> = {
+        name: editName,
+        role: editRole,
+        projectIds: editProjects,
+      };
+      if (editPassword.trim()) {
+        payload.password = editPassword.trim();
+      }
+      await api.patch(`/users/${editUser.id}`, payload);
+      setEditUser(null);
+      setSuccessMsg("User updated successfully.");
+      await fetchData();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || "Failed to update user";
+      setEditError(msg);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleToggleActiveFromEdit = async () => {
+    if (!editUser) return;
+    setEditSaving(true);
+    try {
+      if (editUser.isActive !== false) {
+        await api.delete(`/users/${editUser.id}`);
+      } else {
+        await api.patch(`/users/${editUser.id}`, { isActive: true });
+      }
+      setEditUser(null);
+      await fetchData();
+    } finally {
+      setEditSaving(false);
+    }
   };
 
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-500">Loading...</div>;
@@ -175,14 +220,11 @@ export default function UserManagement() {
                 <td className="px-3 py-2.5 font-medium text-gray-900">{u.name}</td>
                 <td className="px-3 py-2.5 text-gray-600">{u.email}</td>
                 <td className="px-3 py-2.5">
-                  <select
-                    value={u.role}
-                    onChange={(e) => handleRoleChange(u.id, e.target.value as Role)}
-                    className="text-xs border border-gray-300 rounded px-1.5 py-0.5 bg-white"
-                  >
-                    <option value="ADMIN">ADMIN</option>
-                    <option value="MEMBER">MEMBER</option>
-                  </select>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    u.role === "ADMIN" ? "bg-purple-50 text-purple-700" : "bg-blue-50 text-blue-700"
+                  }`}>
+                    {u.role}
+                  </span>
                 </td>
                 <td className="px-3 py-2.5">
                   <div className="flex flex-wrap gap-1">
@@ -205,10 +247,10 @@ export default function UserManagement() {
                 </td>
                 <td className="px-3 py-2.5">
                   <button
-                    onClick={() => handleToggleActive(u)}
-                    className={`text-xs ${u.isActive !== false ? "text-red-500 hover:text-red-700" : "text-green-600 hover:text-green-800"}`}
+                    onClick={() => openEditModal(u)}
+                    className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
                   >
-                    {u.isActive !== false ? "Deactivate" : "Reactivate"}
+                    <Pencil className="w-3.5 h-3.5" /> Edit
                   </button>
                 </td>
               </tr>
@@ -292,6 +334,70 @@ export default function UserManagement() {
             Add Users
           </button>
         </div>
+      </Modal>
+
+      {/* Edit User Modal */}
+      <Modal open={!!editUser} onClose={() => setEditUser(null)} title={`Edit — ${editUser?.name || ""}`}>
+        {editUser && (
+          <form onSubmit={handleEditSave} className="space-y-3">
+            {editError && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">{editError}</div>}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+              <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500" required />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input type="email" value={editUser.email} disabled
+                className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-500 cursor-not-allowed" />
+              <p className="text-xs text-gray-400 mt-1">Email cannot be changed</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+              <select value={editRole} onChange={(e) => setEditRole(e.target.value as Role)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500">
+                <option value="MEMBER">Member</option>
+                <option value="ADMIN">Admin</option>
+              </select>
+            </div>
+
+            <ProjectCheckboxes selected={editProjects} toggle={(id) => toggleProject(id, editProjects, setEditProjects)} />
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Reset Password</label>
+              <input type="text" value={editPassword} onChange={(e) => setEditPassword(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+                placeholder="Leave empty to keep current password" />
+              <p className="text-xs text-gray-400 mt-1">If set, user will be asked to change it on next login</p>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={handleToggleActiveFromEdit}
+                disabled={editSaving}
+                className={`text-xs font-medium px-3 py-1.5 rounded-md border ${
+                  editUser.isActive !== false
+                    ? "text-red-600 border-red-300 hover:bg-red-50"
+                    : "text-green-600 border-green-300 hover:bg-green-50"
+                } disabled:opacity-50`}
+              >
+                {editUser.isActive !== false ? "Deactivate User" : "Reactivate User"}
+              </button>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setEditUser(null)}
+                  className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-md">Cancel</button>
+                <button type="submit" disabled={editSaving}
+                  className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium disabled:opacity-50">
+                  {editSaving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   );
