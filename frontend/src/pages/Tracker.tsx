@@ -1,14 +1,21 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import api from "../lib/api";
 import type { Module, User, Phase, DetailedStatus } from "../lib/types";
-import { PHASE_OPTIONS } from "../lib/constants";
+import { PHASE_OPTIONS, PHASE_LABELS, STATUS_LABELS } from "../lib/constants";
 import PhaseBadge from "../components/PhaseBadge";
 import StatusDropdown from "../components/StatusDropdown";
 import { useAuth } from "../hooks/useAuth";
-import { Plus, Search, X } from "lucide-react";
+import { Plus, Search, X, Download, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import Modal from "../components/Modal";
 import { useProject } from "../hooks/useProject";
+
+type SortField = "name" | "bePhase" | "fePhase" | "owner" | "overallPhase" | "updatedAt";
+type SortDir = "asc" | "desc";
+
+const PHASE_ORDER: Record<Phase, number> = {
+  PREPARATION: 0, EXECUTION: 1, OUTCOME: 2, RETEST: 3, CLOSURE: 4, NA: 5,
+};
 
 export default function Tracker() {
   const { isAdmin } = useAuth();
@@ -25,6 +32,8 @@ export default function Tracker() {
   const [addError, setAddError] = useState("");
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const fetchModules = useCallback(async () => {
     if (!currentProject) return;
@@ -42,7 +51,7 @@ export default function Tracker() {
       const { data } = await api.get("/users");
       setUsers(data);
     } catch {
-      // non-admin users can't list users; that's fine
+      // non-admin users can't list users
     }
   };
 
@@ -57,6 +66,12 @@ export default function Tracker() {
   ) => {
     if (!currentProject) return;
     await api.patch(`/projects/${currentProject.id}/modules/${moduleId}`, { [field]: value });
+    await fetchModules();
+  };
+
+  const handleOwnerChange = async (moduleId: string, ownerId: string) => {
+    if (!currentProject) return;
+    await api.patch(`/projects/${currentProject.id}/modules/${moduleId}`, { ownerId: ownerId || null });
     await fetchModules();
   };
 
@@ -76,6 +91,75 @@ export default function Tracker() {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || "Failed to add module";
       setAddError(msg);
     }
+  };
+
+  const sortedModules = useMemo(() => {
+    const sorted = [...modules].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case "name":
+          cmp = a.name.localeCompare(b.name);
+          break;
+        case "bePhase":
+          cmp = PHASE_ORDER[a.bePhase] - PHASE_ORDER[b.bePhase];
+          break;
+        case "fePhase":
+          cmp = PHASE_ORDER[a.fePhase] - PHASE_ORDER[b.fePhase];
+          break;
+        case "overallPhase":
+          cmp = PHASE_ORDER[a.overallPhase] - PHASE_ORDER[b.overallPhase];
+          break;
+        case "owner":
+          cmp = (a.owner?.name || "zzz").localeCompare(b.owner?.name || "zzz");
+          break;
+        case "updatedAt":
+          cmp = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+          break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [modules, sortField, sortDir]);
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+    setCurrentPage(1);
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 text-gray-300" />;
+    return sortDir === "asc"
+      ? <ArrowUp className="w-3 h-3 text-indigo-600" />
+      : <ArrowDown className="w-3 h-3 text-indigo-600" />;
+  };
+
+  const exportCSV = () => {
+    const headers = ["#", "Module", "BE Phase", "BE Status", "FE Phase", "FE Status", "Owner", "Overall Phase", "Remarks", "Updated"];
+    const rows = sortedModules.map((m, i) => [
+      i + 1,
+      `"${m.name.replace(/"/g, '""')}"`,
+      PHASE_LABELS[m.bePhase],
+      STATUS_LABELS[m.beDetailedStatus],
+      PHASE_LABELS[m.fePhase],
+      STATUS_LABELS[m.feDetailedStatus],
+      m.owner?.name || "Unassigned",
+      PHASE_LABELS[m.overallPhase],
+      `"${(m.remarks || "").replace(/"/g, '""')}"`,
+      new Date(m.updatedAt).toLocaleDateString("en-IN"),
+    ]);
+    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${currentProject?.code || "tracker"}-modules-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const formatDate = (d: string) => {
@@ -99,19 +183,33 @@ export default function Tracker() {
     return <div className="flex items-center justify-center h-64 text-gray-500">Loading...</div>;
   }
 
+  const paged = sortedModules.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const totalPages = Math.ceil(sortedModules.length / pageSize);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-lg font-semibold text-gray-900">Module Tracker</h1>
-        {isAdmin && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-indigo-700 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Module
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {modules.length > 0 && (
+            <button
+              onClick={exportCSV}
+              className="flex items-center gap-1.5 border border-gray-300 text-gray-600 px-3 py-1.5 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-indigo-700 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Module
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
@@ -165,26 +263,50 @@ export default function Tracker() {
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="text-left px-3 py-2.5 font-medium text-gray-600 w-8">#</th>
-                <th className="text-left px-3 py-2.5 font-medium text-gray-600">Module</th>
-                <th className="text-left px-3 py-2.5 font-medium text-gray-600">BE Phase</th>
+                <th className="text-left px-3 py-2.5 font-medium text-gray-600">
+                  <button onClick={() => toggleSort("name")} className="flex items-center gap-1 hover:text-gray-900">
+                    Module <SortIcon field="name" />
+                  </button>
+                </th>
+                <th className="text-left px-3 py-2.5 font-medium text-gray-600">
+                  <button onClick={() => toggleSort("bePhase")} className="flex items-center gap-1 hover:text-gray-900">
+                    BE Phase <SortIcon field="bePhase" />
+                  </button>
+                </th>
                 <th className="text-left px-3 py-2.5 font-medium text-gray-600 min-w-[180px]">BE Status</th>
-                <th className="text-left px-3 py-2.5 font-medium text-gray-600">FE Phase</th>
+                <th className="text-left px-3 py-2.5 font-medium text-gray-600">
+                  <button onClick={() => toggleSort("fePhase")} className="flex items-center gap-1 hover:text-gray-900">
+                    FE Phase <SortIcon field="fePhase" />
+                  </button>
+                </th>
                 <th className="text-left px-3 py-2.5 font-medium text-gray-600 min-w-[180px]">FE Status</th>
-                <th className="text-left px-3 py-2.5 font-medium text-gray-600">Owner</th>
-                <th className="text-left px-3 py-2.5 font-medium text-gray-600">Overall</th>
+                <th className="text-left px-3 py-2.5 font-medium text-gray-600">
+                  <button onClick={() => toggleSort("owner")} className="flex items-center gap-1 hover:text-gray-900">
+                    Owner <SortIcon field="owner" />
+                  </button>
+                </th>
+                <th className="text-left px-3 py-2.5 font-medium text-gray-600">
+                  <button onClick={() => toggleSort("overallPhase")} className="flex items-center gap-1 hover:text-gray-900">
+                    Overall <SortIcon field="overallPhase" />
+                  </button>
+                </th>
                 <th className="text-left px-3 py-2.5 font-medium text-gray-600">Remarks</th>
-                <th className="text-left px-3 py-2.5 font-medium text-gray-600">Updated</th>
+                <th className="text-left px-3 py-2.5 font-medium text-gray-600">
+                  <button onClick={() => toggleSort("updatedAt")} className="flex items-center gap-1 hover:text-gray-900">
+                    Updated <SortIcon field="updatedAt" />
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {modules.length === 0 ? (
+              {sortedModules.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-3 py-8 text-center text-gray-500">
                     {search || filterPhase || filterOwner ? "No modules match your filters" : "No modules yet. Add one to get started."}
                   </td>
                 </tr>
               ) : (
-                modules.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((m, idx) => (
+                paged.map((m, idx) => (
                   <tr key={m.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-3 py-2.5 text-gray-400">{(currentPage - 1) * pageSize + idx + 1}</td>
                     <td className="px-3 py-2.5">
@@ -206,7 +328,22 @@ export default function Tracker() {
                         onChange={(v) => handleStatusChange(m.id, "feDetailedStatus", v)}
                       />
                     </td>
-                    <td className="px-3 py-2.5 text-gray-700">{m.owner?.name || <span className="text-gray-400">—</span>}</td>
+                    <td className="px-3 py-2.5">
+                      {users.length > 0 ? (
+                        <select
+                          value={m.owner?.id || ""}
+                          onChange={(e) => handleOwnerChange(m.id, e.target.value)}
+                          className="text-xs border border-gray-200 rounded px-1.5 py-1 bg-white hover:border-gray-300 focus:ring-2 focus:ring-indigo-500 max-w-[120px]"
+                        >
+                          <option value="">Unassigned</option>
+                          {users.filter(u => u.isActive !== false).map((u) => (
+                            <option key={u.id} value={u.id}>{u.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-gray-700">{m.owner?.name || <span className="text-gray-400">—</span>}</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5"><PhaseBadge phase={m.overallPhase} /></td>
                     <td className="px-3 py-2.5 text-gray-600 max-w-[200px] truncate" title={m.remarks || ""}>
                       {m.remarks || <span className="text-gray-300">—</span>}
@@ -237,12 +374,12 @@ export default function Tracker() {
           </select>
           <span>per page</span>
           <span className="text-gray-400 ml-2">
-            {modules.length > 0
-              ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, modules.length)} of ${modules.length}`
+            {sortedModules.length > 0
+              ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, sortedModules.length)} of ${sortedModules.length}`
               : "0 modules"}
           </span>
         </div>
-        {modules.length > pageSize && (
+        {totalPages > 1 && (
           <div className="flex items-center gap-1">
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
@@ -251,11 +388,8 @@ export default function Tracker() {
             >
               Previous
             </button>
-            {Array.from({ length: Math.ceil(modules.length / pageSize) }, (_, i) => i + 1)
-              .filter((p) => {
-                const total = Math.ceil(modules.length / pageSize);
-                return p === 1 || p === total || Math.abs(p - currentPage) <= 1;
-              })
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
               .reduce<(number | string)[]>((acc, p, i, arr) => {
                 if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push("...");
                 acc.push(p);
@@ -279,8 +413,8 @@ export default function Tracker() {
                 )
               )}
             <button
-              onClick={() => setCurrentPage((p) => Math.min(Math.ceil(modules.length / pageSize), p + 1))}
-              disabled={currentPage >= Math.ceil(modules.length / pageSize)}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
               className="px-2.5 py-1 text-xs border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Next

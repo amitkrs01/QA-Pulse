@@ -3,7 +3,7 @@ import api from "../lib/api";
 import type { Project, User } from "../lib/types";
 import Modal from "../components/Modal";
 import { useProject } from "../hooks/useProject";
-import { Plus, UserPlus, UserMinus, Search } from "lucide-react";
+import { Plus, UserPlus, UserMinus, Search, Trash2 } from "lucide-react";
 
 export default function ProjectManagement() {
   const { refreshProjects } = useProject();
@@ -18,6 +18,8 @@ export default function ProjectManagement() {
   const [error, setError] = useState("");
   const [addUserId, setAddUserId] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<Project | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchProjects = async () => {
     const { data } = await api.get("/projects");
@@ -75,6 +77,21 @@ export default function ProjectManagement() {
     await refreshProjects();
   };
 
+  const handleDeleteProject = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/projects/${deleteConfirm.id}`);
+      setDeleteConfirm(null);
+      await fetchProjects();
+      await refreshProjects();
+    } catch {
+      setError("Failed to delete project");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-500">Loading...</div>;
 
   const currentProjectName = projects.find((p) => p.id === showMembersModal)?.name;
@@ -128,12 +145,21 @@ export default function ProjectManagement() {
                 <td className="px-3 py-2.5 text-gray-600">{p._count?.modules ?? 0}</td>
                 <td className="px-3 py-2.5 text-gray-600">{p._count?.members ?? 0}</td>
                 <td className="px-3 py-2.5">
-                  <button
-                    onClick={() => openMembers(p.id)}
-                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                  >
-                    Manage Members
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => openMembers(p.id)}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                    >
+                      Manage Members
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirm(p)}
+                      className="text-xs text-red-400 hover:text-red-600"
+                      title="Delete project"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -221,6 +247,28 @@ export default function ProjectManagement() {
             )}
           </div>
         </div>
+      </Modal>
+
+      {/* Delete Confirmation */}
+      <Modal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Project">
+        {deleteConfirm && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700">
+              Are you sure you want to delete <strong>{deleteConfirm.name}</strong> ({deleteConfirm.code})?
+            </p>
+            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+              This will permanently delete all modules ({deleteConfirm._count?.modules ?? 0}), memberships, and audit logs associated with this project. This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeleteConfirm(null)}
+                className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-md">Cancel</button>
+              <button onClick={handleDeleteProject} disabled={deleting}
+                className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 font-medium disabled:opacity-50">
+                {deleting ? "Deleting..." : "Delete Project"}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

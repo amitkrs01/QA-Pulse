@@ -46,7 +46,7 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="admin@qapulse.com"
+              placeholder="you@company.com"
               required
             />
           </div>
@@ -72,28 +72,6 @@ export default function Login() {
             <Link to="/forgot-password" className="text-xs text-gray-500 hover:text-indigo-600">Forgot password?</Link>
           </div>
         </form>
-        <div className="mt-4 bg-white rounded-lg border border-dashed border-gray-300 p-4">
-          <p className="text-xs font-medium text-gray-500 mb-2">Demo Credentials</p>
-          <div className="space-y-1.5">
-            {[
-              { label: "Admin", email: "admin@qapulse.com", password: "admin123" },
-              { label: "Member", email: "alice@qapulse.com", password: "pass123" },
-            ].map((cred) => (
-              <button
-                key={cred.email}
-                type="button"
-                onClick={() => { setEmail(cred.email); setPassword(cred.password); }}
-                className="w-full flex items-center justify-between text-left px-3 py-2 rounded-md bg-gray-50 hover:bg-indigo-50 hover:border-indigo-200 border border-gray-200 transition-colors group"
-              >
-                <div>
-                  <span className="text-xs font-medium text-gray-700 group-hover:text-indigo-700">{cred.label}</span>
-                  <span className="text-xs text-gray-400 ml-2">{cred.email}</span>
-                </div>
-                <span className="text-xs text-gray-400 group-hover:text-indigo-500">Use</span>
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );

@@ -121,6 +121,39 @@ router.post("/:id/members", requireAdmin, async (req: Request, res: Response): P
   res.status(201).json({ message: "Member added" });
 });
 
+router.delete("/:id", requireAdmin, async (req: Request, res: Response): Promise<void> => {
+  const projectId = req.params.id as string;
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: { _count: { select: { modules: true } } },
+  });
+
+  if (!project) {
+    res.status(404).json({ error: "Project not found" });
+    return;
+  }
+
+  await prisma.activityLog.deleteMany({
+    where: { module: { projectId } },
+  });
+  await prisma.module.deleteMany({ where: { projectId } });
+  await prisma.auditLog.deleteMany({ where: { projectId } });
+  await prisma.projectMember.deleteMany({ where: { projectId } });
+  await prisma.project.delete({ where: { id: projectId } });
+
+  await logAudit({
+    userId: req.user!.id,
+    action: "project.delete",
+    entity: "project",
+    entityId: projectId,
+    details: { name: project.name, code: project.code, modulesDeleted: project._count.modules },
+    ipAddress: req.clientIp,
+  });
+
+  res.json({ message: "Project deleted" });
+});
+
 router.delete("/:id/members/:userId", requireAdmin, async (req: Request, res: Response): Promise<void> => {
   const projectId = req.params.id as string;
   const userId = req.params.userId as string;
