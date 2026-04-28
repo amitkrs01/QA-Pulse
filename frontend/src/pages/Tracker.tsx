@@ -23,6 +23,8 @@ export default function Tracker() {
   const [newModuleName, setNewModuleName] = useState("");
   const [newModuleOwner, setNewModuleOwner] = useState("");
   const [addError, setAddError] = useState("");
+  const [pageSize, setPageSize] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const fetchModules = useCallback(async () => {
     if (!currentProject) return;
@@ -120,13 +122,13 @@ export default function Tracker() {
             type="text"
             placeholder="Search modules..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
             className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           />
         </div>
         <select
           value={filterPhase}
-          onChange={(e) => setFilterPhase(e.target.value as Phase | "")}
+          onChange={(e) => { setFilterPhase(e.target.value as Phase | ""); setCurrentPage(1); }}
           className="text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-500"
         >
           <option value="">All Phases</option>
@@ -137,7 +139,7 @@ export default function Tracker() {
         {users.length > 0 && (
           <select
             value={filterOwner}
-            onChange={(e) => setFilterOwner(e.target.value)}
+            onChange={(e) => { setFilterOwner(e.target.value); setCurrentPage(1); }}
             className="text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-500"
           >
             <option value="">All Owners</option>
@@ -148,7 +150,7 @@ export default function Tracker() {
         )}
         {(search || filterPhase || filterOwner) && (
           <button
-            onClick={() => { setSearch(""); setFilterPhase(""); setFilterOwner(""); }}
+            onClick={() => { setSearch(""); setFilterPhase(""); setFilterOwner(""); setCurrentPage(1); }}
             className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
           >
             <X className="w-3.5 h-3.5" /> Clear
@@ -182,9 +184,9 @@ export default function Tracker() {
                   </td>
                 </tr>
               ) : (
-                modules.map((m, idx) => (
+                modules.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((m, idx) => (
                   <tr key={m.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-3 py-2.5 text-gray-400">{idx + 1}</td>
+                    <td className="px-3 py-2.5 text-gray-400">{(currentPage - 1) * pageSize + idx + 1}</td>
                     <td className="px-3 py-2.5">
                       <Link to={`/modules/${m.id}`} className="text-indigo-600 hover:text-indigo-800 font-medium">
                         {m.name}
@@ -220,8 +222,71 @@ export default function Tracker() {
         </div>
       </div>
 
-      <div className="mt-2 text-xs text-gray-400">
-        {modules.length} module{modules.length !== 1 ? "s" : ""}
+      {/* Pagination */}
+      <div className="flex items-center justify-between mt-3">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <span>Show</span>
+          <select
+            value={pageSize}
+            onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+            className="border border-gray-300 rounded px-1.5 py-1 bg-white text-xs focus:ring-2 focus:ring-indigo-500"
+          >
+            {[10, 25, 50, 100].map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+          <span>per page</span>
+          <span className="text-gray-400 ml-2">
+            {modules.length > 0
+              ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, modules.length)} of ${modules.length}`
+              : "0 modules"}
+          </span>
+        </div>
+        {modules.length > pageSize && (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-2.5 py-1 text-xs border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            {Array.from({ length: Math.ceil(modules.length / pageSize) }, (_, i) => i + 1)
+              .filter((p) => {
+                const total = Math.ceil(modules.length / pageSize);
+                return p === 1 || p === total || Math.abs(p - currentPage) <= 1;
+              })
+              .reduce<(number | string)[]>((acc, p, i, arr) => {
+                if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push("...");
+                acc.push(p);
+                return acc;
+              }, [])
+              .map((p, i) =>
+                typeof p === "string" ? (
+                  <span key={`ellipsis-${i}`} className="px-1 text-xs text-gray-400">...</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setCurrentPage(p)}
+                    className={`px-2.5 py-1 text-xs border rounded-md ${
+                      currentPage === p
+                        ? "bg-indigo-600 text-white border-indigo-600"
+                        : "border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(Math.ceil(modules.length / pageSize), p + 1))}
+              disabled={currentPage >= Math.ceil(modules.length / pageSize)}
+              className="px-2.5 py-1 text-xs border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
 
       <Modal open={showAddModal} onClose={() => { setShowAddModal(false); setAddError(""); }} title="Add Module">

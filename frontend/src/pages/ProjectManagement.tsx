@@ -3,7 +3,7 @@ import api from "../lib/api";
 import type { Project, User } from "../lib/types";
 import Modal from "../components/Modal";
 import { useProject } from "../hooks/useProject";
-import { Plus, UserPlus, UserMinus } from "lucide-react";
+import { Plus, UserPlus, UserMinus, Search } from "lucide-react";
 
 export default function ProjectManagement() {
   const { refreshProjects } = useProject();
@@ -17,6 +17,7 @@ export default function ProjectManagement() {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [addUserId, setAddUserId] = useState("");
+  const [projectSearch, setProjectSearch] = useState("");
 
   const fetchProjects = async () => {
     const { data } = await api.get("/projects");
@@ -92,6 +93,18 @@ export default function ProjectManagement() {
         </button>
       </div>
 
+      {/* Search */}
+      <div className="relative max-w-xs mb-4">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Search by name or code..."
+          value={projectSearch}
+          onChange={(e) => setProjectSearch(e.target.value)}
+          className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        />
+      </div>
+
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -104,7 +117,11 @@ export default function ProjectManagement() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {projects.map((p) => (
+            {projects.filter((p) => {
+              if (!projectSearch) return true;
+              const q = projectSearch.toLowerCase();
+              return p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q);
+            }).map((p) => (
               <tr key={p.id} className="hover:bg-gray-50">
                 <td className="px-3 py-2.5 font-mono text-indigo-600 font-semibold">{p.code}</td>
                 <td className="px-3 py-2.5 font-medium text-gray-900">{p.name}</td>

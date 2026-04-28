@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import api from "../lib/api";
 import type { User, Role, Project } from "../lib/types";
-import { Plus, UserPlus, Mail } from "lucide-react";
+import { Plus, UserPlus, Mail, Search } from "lucide-react";
 import Modal from "../components/Modal";
 
 export default function UserManagement() {
@@ -22,6 +22,7 @@ export default function UserManagement() {
   const [bulkText, setBulkText] = useState("");
   const [bulkProjectIds, setBulkProjectIds] = useState<string[]>([]);
   const [bulkResults, setBulkResults] = useState<Array<{ email: string; status: string; emailSent?: boolean; error?: string }>>([]);
+  const [userSearch, setUserSearch] = useState("");
 
   const fetchData = async () => {
     const [usersRes, projectsRes] = await Promise.all([
@@ -140,6 +141,18 @@ export default function UserManagement() {
         </div>
       )}
 
+      {/* Search */}
+      <div className="relative max-w-xs mb-4">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Search by name or email..."
+          value={userSearch}
+          onChange={(e) => setUserSearch(e.target.value)}
+          className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        />
+      </div>
+
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-6">
         <table className="w-full text-sm">
           <thead>
@@ -153,7 +166,11 @@ export default function UserManagement() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {users.map((u) => (
+            {users.filter((u) => {
+              if (!userSearch) return true;
+              const q = userSearch.toLowerCase();
+              return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+            }).map((u) => (
               <tr key={u.id} className="hover:bg-gray-50">
                 <td className="px-3 py-2.5 font-medium text-gray-900">{u.name}</td>
                 <td className="px-3 py-2.5 text-gray-600">{u.email}</td>
